@@ -1,4 +1,3 @@
- // client/src/components/BalanceSection.jsx
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import axios from 'axios';
@@ -13,7 +12,6 @@ const BalanceSection = ({ coreBalance, pulseBalance, wallet, transactions, total
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [sendAddress, setSendAddress] = useState('');
   const [sendAmount, setSendAmount] = useState('');
-  const [claimableAmount, setClaimableAmount] = useState('0');
 
   useEffect(() => {
     const checkClaimStatus = async () => {
@@ -29,97 +27,13 @@ const BalanceSection = ({ coreBalance, pulseBalance, wallet, transactions, total
         }
         const claimed = ethers.AbiCoder.defaultAbiCoder().decode(['bool'], hasClaimedResponse.data.result)[0];
         setIsClaimed(claimed);
-
-        if (!claimed) {
-          // Try getClaimableAmount
-          const claimableData = ethers.AbiCoder.defaultAbiCoder().encode(['address'], [wallet.address]);
-          const claimableResponse = await axios.get(
-            `${CORE_SCAN_API}?module=proxy&action=eth_call&to=${PULSE_CONTRACT_ADDRESS}&data=0x0cb3a488${claimableData.slice(2)}`,
-            { timeout: 5000 }
-          );
-          if (claimableResponse.data.status === '1' && claimableResponse.data.result !== '0x') {
-            const amount = ethers.AbiCoder.defaultAbiCoder().decode(['uint256'], claimableResponse.data.result)[0];
-            setClaimableAmount(ethers.formatEther(amount));
-          } else {
-            setClaimableAmount('100'); // Default for eligibility
-          }
-        }
       } catch (error) {
         console.error('Error checking claim status:', error);
-        // Fallback: Assume eligible if no transactions
         setIsClaimed(false);
-        setClaimableAmount('100');
-        toast.warn('Unable to verify claim status, but you may be eligible to claim');
       }
     };
     checkClaimStatus();
   }, [wallet.address]);
-
-  const handleClaim = async () => {
-    if (isLoading) return;
-    setIsLoading(true);
-    try {
-      if (parseFloat(claimableAmount) === 0) {
-        throw new Error('No tokens to claim');
-      }
-      const provider = new ethers.JsonRpcProvider('https://rpc.coredao.org');
-      const signer = new ethers.Wallet(wallet.privateKey, provider);
-      const contract = new ethers.Contract(PULSE_CONTRACT_ADDRESS, PULSE_ABI, signer);
-
-      let response;
-      let attempts = 3;
-      while (attempts > 0) {
-        try {
-          response = await axios.post(`${API_URL}/wallet/sign-claim`, {
-            address: wallet.address,
-          });
-          break;
-        } catch (error) {
-          attempts--;
-          if (attempts === 0) throw new Error('Failed to reach backend after retries');
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-      }
-      if (response.status !== 200) {
-        throw new Error(response.data.message || 'Failed to claim tokens');
-      }
-      const { adminSig, nonce, amount, messageHash } = response.data;
-
-      const userSig = await signer.signMessage(ethers.getBytes(messageHash));
-
-      const feeData = await provider.getFeeData();
-      const gasLimit = await contract.claimTokens.estimateGas(
-        wallet.address,
-        amount,
-        ethers.ZeroAddress,
-        nonce,
-        adminSig,
-        userSig
-      );
-      const tx = await contract.claimTokens(
-        wallet.address,
-        amount,
-        ethers.ZeroAddress,
-        nonce,
-        adminSig,
-        userSig,
-        {
-          gasLimit: gasLimit * 120n / 100n,
-          maxFeePerGas: feeData.maxFeePerGas,
-          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
-        }
-      );
-      const receipt = await tx.wait();
-      setIsClaimed(true);
-      setClaimableAmount('0');
-      toast.success(`Claimed ${ethers.formatEther(amount)} PULSE! Hash: ${receipt.transactionHash}`);
-    } catch (error) {
-      console.error('Claim error:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to claim tokens';
-      toast.error(errorMessage);
-    }
-    setIsLoading(false);
-  };
 
   const handleSend = async () => {
     setShowSendModal(true);
@@ -177,9 +91,6 @@ const BalanceSection = ({ coreBalance, pulseBalance, wallet, transactions, total
           <p className="text-text text-lg">Total Balance: <span className="text-accent">${totalBalanceUSD}</span></p>
           <p className="text-text">CORE: {coreBalance}</p>
           <p className="text-text">PULSE: {pulseBalance}</p>
-          {!isClaimed && parseFloat(claimableAmount) > 0 && (
-            <p className="text-text">Claimable: {claimableAmount} PULSE</p>
-          )}
         </div>
         <div className="flex space-x-4 mt-4 md:mt-0">
           <button
@@ -194,17 +105,6 @@ const BalanceSection = ({ coreBalance, pulseBalance, wallet, transactions, total
           >
             Receive
           </button>
-          {!isClaimed && parseFloat(claimableAmount) > 0 && (
-            <button
-              onClick={handleClaim}
-              className={`bg-accent text-primary px-4 py-2 rounded-md hover:bg-accent-dark ${
-                isLoading ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-              disabled={isLoading}
-            >
-              {isLoading ? 'Claiming...' : 'Claim PulseToken'}
-            </button>
-          )}
         </div>
       </div>
 

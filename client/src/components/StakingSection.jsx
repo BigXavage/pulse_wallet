@@ -1,9 +1,8 @@
-// client/src/components/StakingSection.jsx
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import axios from 'axios';
 import { toast } from 'react-toastify';
-import { CORE_SCAN_API, PULSE_CONTRACT_ADDRESS, PULSE_ABI, TOKEN_ADDRESSES, ERC20_ABI, API_URL } from '../config';
+import { CORE_SCAN_API, PULSE_CONTRACT_ADDRESS, PULSE_ABI, TOKEN_ADDRESSES, API_URL } from '../config';
 
 const StakingSection = ({ wallet }) => {
   const [coreStaked, setCoreStaked] = useState('0.0000');
@@ -17,122 +16,24 @@ const StakingSection = ({ wallet }) => {
   useEffect(() => {
     const fetchStakes = async () => {
       try {
-        // Fetch CORE stake
-        let attempts = 3;
-        while (attempts > 0) {
-          try {
-            const coreStakeData = ethers.AbiCoder.defaultAbiCoder().encode(
-              ['address', 'address'],
-              [wallet.address, TOKEN_ADDRESSES.CORE]
-            );
-            const coreStakeResponse = await axios.get(
-              `${CORE_SCAN_API}?module=proxy&action=eth_call&to=${PULSE_CONTRACT_ADDRESS}&data=0x62b15fdc${coreStakeData.slice(2)}`,
-              { timeout: 5000 }
-            );
-            if (coreStakeResponse.data.status !== '1' || coreStakeResponse.data.result === '0x') {
-              throw new Error('Failed to fetch CORE stake');
-            }
-            const coreStakedWei = ethers.AbiCoder.defaultAbiCoder().decode(
-              ['uint256'],
-              coreStakeResponse.data.result
-            )[0];
-            setCoreStaked((parseFloat(coreStakedWei) / 1e18).toFixed(4));
-            break;
-          } catch (error) {
-            attempts--;
-            if (attempts === 0) throw error;
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-          }
-        }
+        const provider = new ethers.JsonRpcProvider(CORE_SCAN_API);
+        const contract = new ethers.Contract(PULSE_CONTRACT_ADDRESS, PULSE_ABI, provider);
 
-        // Fetch USDT stake
-        attempts = 3;
-        while (attempts > 0) {
-          try {
-            const usdtStakeData = ethers.AbiCoder.defaultAbiCoder().encode(
-              ['address', 'address'],
-              [wallet.address, TOKEN_ADDRESSES.USDT]
-            );
-            const usdtStakeResponse = await axios.get(
-              `${CORE_SCAN_API}?module=proxy&action=eth_call&to=${PULSE_CONTRACT_ADDRESS}&data=0x62b15fdc${usdtStakeData.slice(2)}`,
-              { timeout: 5000 }
-            );
-            if (usdtStakeResponse.data.status !== '1' || usdtStakeResponse.data.result === '0x') {
-              throw new Error('Failed to fetch USDT stake');
-            }
-            const usdtStakedWei = ethers.AbiCoder.defaultAbiCoder().decode(
-              ['uint256'],
-              usdtStakeResponse.data.result
-            )[0];
-            setUsdtStaked((parseFloat(usdtStakedWei) / 1e6).toFixed(4));
-            break;
-          } catch (error) {
-            attempts--;
-            if (attempts === 0) throw error;
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-          }
-        }
+        const coreStakedWei = await contract.getStake(wallet.address, TOKEN_ADDRESSES.CORE);
+        const usdtStakedWei = await contract.getStake(wallet.address, TOKEN_ADDRESSES.USDT);
+        const coreRewardsWei = await contract.getStakingRewards(wallet.address, TOKEN_ADDRESSES.CORE);
+        const usdtRewardsWei = await contract.getStakingRewards(wallet.address, TOKEN_ADDRESSES.USDT);
 
-        // Fetch CORE rewards
-        attempts = 3;
-        while (attempts > 0) {
-          try {
-            const coreRewardsData = ethers.AbiCoder.defaultAbiCoder().encode(
-              ['address', 'address'],
-              [wallet.address, TOKEN_ADDRESSES.CORE]
-            );
-            const coreRewardsResponse = await axios.get(
-              `${CORE_SCAN_API}?module=proxy&action=eth_call&to=${PULSE_CONTRACT_ADDRESS}&data=0x8d7ecce4${coreRewardsData.slice(2)}`,
-              { timeout: 5000 }
-            );
-            if (coreRewardsResponse.data.status !== '1' || coreRewardsResponse.data.result === '0x') {
-              throw new Error('Failed to fetch CORE rewards');
-            }
-            const coreRewardsWei = ethers.AbiCoder.defaultAbiCoder().decode(
-              ['uint256'],
-              coreRewardsResponse.data.result
-            )[0];
-            setCoreRewards((parseFloat(coreRewardsWei) / 1e18).toFixed(4));
-            break;
-          } catch (error) {
-            attempts--;
-            if (attempts === 0) throw error;
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-          }
-        }
-
-        // Fetch USDT rewards
-        attempts = 3;
-        while (attempts > 0) {
-          try {
-            const usdtRewardsData = ethers.AbiCoder.defaultAbiCoder().encode(
-              ['address', 'address'],
-              [wallet.address, TOKEN_ADDRESSES.USDT]
-            );
-            const usdtRewardsResponse = await axios.get(
-              `${CORE_SCAN_API}?module=proxy&action=eth_call&to=${PULSE_CONTRACT_ADDRESS}&data=0x8d7ecce4${usdtRewardsData.slice(2)}`,
-              { timeout: 5000 }
-            );
-            if (usdtRewardsResponse.data.status !== '1' || usdtRewardsResponse.data.result === '0x') {
-              throw new Error('Failed to fetch USDT rewards');
-            }
-            const usdtRewardsWei = ethers.AbiCoder.defaultAbiCoder().decode(
-              ['uint256'],
-              usdtRewardsResponse.data.result
-            )[0];
-            setUsdtRewards((parseFloat(usdtRewardsWei) / 1e6).toFixed(4));
-            break;
-          } catch (error) {
-            attempts--;
-            if (attempts === 0) throw error;
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-          }
-        }
+        setCoreStaked(ethers.formatEther(coreStakedWei));
+        setUsdtStaked(ethers.formatUnits(usdtStakedWei, 6));
+        setCoreRewards(ethers.formatEther(coreRewardsWei));
+        setUsdtRewards(ethers.formatUnits(usdtRewardsWei, 6));
       } catch (error) {
         console.error('Error fetching stakes:', error);
         toast.error('Failed to load staking data');
       }
     };
+
     fetchStakes();
   }, [wallet.address]);
 
@@ -140,14 +41,8 @@ const StakingSection = ({ wallet }) => {
     if (isLoading || !stakeAmount || parseFloat(stakeAmount) <= 0) return;
     setIsLoading(true);
     try {
-      const walletResponse = await axios.get(`${API_URL}/wallet/credentials/${wallet.address}`);
-      const { privateKey, mnemonic } = walletResponse.data;
-      if (!privateKey && !mnemonic) {
-        throw new Error('No wallet credentials found');
-      }
-
-      const provider = new ethers.JsonRpcProvider('https://rpc.coredao.org');
-      const signer = privateKey ? new ethers.Wallet(privateKey, provider) : ethers.Wallet.fromPhrase(mnemonic, provider);
+      const provider = new ethers.JsonRpcProvider(CORE_RPC_URL);
+      const signer = new ethers.Wallet(wallet.privateKey, provider);
       const contract = new ethers.Contract(PULSE_CONTRACT_ADDRESS, PULSE_ABI, signer);
 
       const feeData = await provider.getFeeData();
@@ -160,7 +55,7 @@ const StakingSection = ({ wallet }) => {
           maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
         });
       } else {
-        const tokenContract = new ethers.Contract(TOKEN_ADDRESSES.USDT, ERC20_ABI, signer);
+        const tokenContract = new ethers.Contract(TOKEN_ADDRESSES.USDT, PULSE_ABI, signer);
         await tokenContract.approve(PULSE_CONTRACT_ADDRESS, ethers.parseUnits(stakeAmount, 6));
         tx = await contract.stakeUsdt(ethers.parseUnits(stakeAmount, 6), {
           gasLimit: 200000,
@@ -191,14 +86,8 @@ const StakingSection = ({ wallet }) => {
     if (isLoading) return;
     setIsLoading(true);
     try {
-      const walletResponse = await axios.get(`${API_URL}/wallet/credentials/${wallet.address}`);
-      const { privateKey, mnemonic } = walletResponse.data;
-      if (!privateKey && !mnemonic) {
-        throw new Error('No wallet credentials found');
-      }
-
-      const provider = new ethers.JsonRpcProvider('https://rpc.coredao.org');
-      const signer = privateKey ? new ethers.Wallet(privateKey, provider) : ethers.Wallet.fromPhrase(mnemonic, provider);
+      const provider = new ethers.JsonRpcProvider(CORE_RPC_URL);
+      const signer = new ethers.Wallet(wallet.privateKey, provider);
       const contract = new ethers.Contract(PULSE_CONTRACT_ADDRESS, PULSE_ABI, signer);
 
       const tokenAddress = token === 'CORE' ? TOKEN_ADDRESSES.CORE : TOKEN_ADDRESSES.USDT;

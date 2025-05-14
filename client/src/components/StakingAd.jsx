@@ -1,14 +1,13 @@
-// client/src/components/StakingAd.jsx
 import React, { useState } from 'react';
 import { ethers } from 'ethers';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
-import { CORE_RPC_URL, PULSE_CONTRACT_ADDRESS, PULSE_ABI, TOKEN_ADDRESSES, ERC20_ABI } from '../config';
+import { CORE_RPC_URL, PULSE_CONTRACT_ADDRESS, PULSE_ABI, TOKEN_ADDRESSES } from '../config';
 
 const StakingAd = ({ wallet }) => {
   const [showForm, setShowForm] = useState(false);
   const [amount, setAmount] = useState('');
-  const [token, setToken] = useState('WCORE');
+  const [token, setToken] = useState('CORE'); // Default to CORE
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -18,37 +17,53 @@ const StakingAd = ({ wallet }) => {
     try {
       const provider = new ethers.JsonRpcProvider(CORE_RPC_URL);
       const signer = new ethers.Wallet(wallet.privateKey, provider);
-      const amountWei = ethers.parseUnits(amount, token === 'USDT' ? 6 : 18);
-
-      const tokenAddress = TOKEN_ADDRESSES[token];
-      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
       const contract = new ethers.Contract(PULSE_CONTRACT_ADDRESS, PULSE_ABI, signer);
 
-      const balanceWei = await tokenContract.balanceOf(wallet.address);
-      if (balanceWei < amountWei) {
-        throw new Error(`Insufficient ${token} balance`);
-      }
-
-      const allowance = await tokenContract.allowance(wallet.address, PULSE_CONTRACT_ADDRESS);
-      if (allowance < amountWei) {
-        const approveTx = await tokenContract.approve(PULSE_CONTRACT_ADDRESS, amountWei, {
-          gasLimit: 100000,
-          maxFeePerGas: (await provider.getFeeData()).maxFeePerGas,
-          maxPriorityFeePerGas: (await provider.getFeeData()).maxPriorityFeePerGas,
-        });
-        await approveTx.wait();
-        toast.info(`Approved ${amount} ${token} for staking`);
-      }
-
       const feeData = await provider.getFeeData();
-      const gasLimit = await contract.stakeToken.estimateGas(tokenAddress, amountWei).catch(() => 200000n);
-      const tx = await contract.stakeToken(tokenAddress, amountWei, {
-        gasLimit: gasLimit * 120n / 100n,
-        maxFeePerGas: feeData.maxFeePerGas,
-        maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
-      });
-      const receipt = await tx.wait();
-      toast.success(`Staked ${amount} ${token}! Hash: ${receipt.transactionHash}`);
+      const amountWei = ethers.parseUnits(amount, token === 'USDT' ? 6 : 18);
+
+      if (token === 'CORE') {
+        // Stake CORE using stakeCore() method
+        const tx = await contract.stakeCore({
+          value: amountWei, // CORE is sent as value
+          gasLimit: 200000,
+          maxFeePerGas: feeData.maxFeePerGas,
+          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+        });
+        const receipt = await tx.wait();
+        toast.success(`Staked ${amount} CORE! Hash: ${receipt.transactionHash}`);
+      } else if (token === 'USDT') {
+        // Stake USDT using stakeUsdt() method
+        const tokenAddress = TOKEN_ADDRESSES[token];
+        const tokenContract = new ethers.Contract(tokenAddress, PULSE_ABI, signer);
+
+        // Check USDT balance
+        const balanceWei = await tokenContract.balanceOf(wallet.address);
+        if (balanceWei < amountWei) {
+          throw new Error(`Insufficient USDT balance`);
+        }
+
+        // Approve USDT for staking
+        const allowance = await tokenContract.allowance(wallet.address, PULSE_CONTRACT_ADDRESS);
+        if (allowance < amountWei) {
+          const approveTx = await tokenContract.approve(PULSE_CONTRACT_ADDRESS, amountWei, {
+            gasLimit: 100000,
+            maxFeePerGas: feeData.maxFeePerGas,
+            maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+          });
+          await approveTx.wait();
+          toast.info(`Approved ${amount} USDT for staking`);
+        }
+
+        // Stake USDT
+        const tx = await contract.stakeUsdt(amountWei, {
+          gasLimit: 200000,
+          maxFeePerGas: feeData.maxFeePerGas,
+          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+        });
+        const receipt = await tx.wait();
+        toast.success(`Staked ${amount} USDT! Hash: ${receipt.transactionHash}`);
+      }
 
       setAmount('');
       setShowForm(false);
@@ -92,7 +107,7 @@ const StakingAd = ({ wallet }) => {
               onChange={(e) => setToken(e.target.value)}
               disabled={isLoading}
             >
-              <option value="WCORE">WCORE</option>
+              <option value="CORE">CORE</option>
               <option value="USDT">USDT</option>
             </select>
           </div>

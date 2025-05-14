@@ -1,8 +1,7 @@
-// client/src/components/TokenList.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { ethers } from 'ethers';
-import { CORE_SCAN_API, COINGECKO_API, TOKEN_ADDRESSES, CORE_RPC_URL } from '../config';
+import { CORE_SCAN_API, COINGECKO_API, TOKEN_ADDRESSES, CORE_RPC_URL, PULSE_CONTRACT_ADDRESS, PULSE_ABI } from '../config';
 import { toast } from 'react-toastify';
 
 const TokenList = ({ wallet }) => {
@@ -34,8 +33,10 @@ const TokenList = ({ wallet }) => {
           })),
         ];
 
-        // Fetch balances
+        // Fetch balances and include claimable amount
         const provider = new ethers.JsonRpcProvider(CORE_RPC_URL);
+        const pulseContract = new ethers.Contract(PULSE_CONTRACT_ADDRESS, PULSE_ABI, provider);
+
         const tokenBalances = await Promise.all(
           tokenList.map(async (token) => {
             try {
@@ -47,6 +48,10 @@ const TokenList = ({ wallet }) => {
               if (token.address === TOKEN_ADDRESSES.CORE) {
                 const balanceWei = await provider.getBalance(wallet.address);
                 balance = parseFloat(ethers.formatEther(balanceWei));
+              } else if (token.address === TOKEN_ADDRESSES.PULSE) {
+                // Fetch claimable amount for PULSE
+                const claimableAmountWei = await pulseContract.getClaimableAmount(wallet.address);
+                balance = parseFloat(ethers.formatEther(claimableAmountWei));
               } else {
                 let attempts = 3;
                 while (attempts > 0) {
