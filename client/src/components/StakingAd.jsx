@@ -4,11 +4,20 @@ import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import { CORE_RPC_URL, PULSE_CONTRACT_ADDRESS, PULSE_ABI, TOKEN_ADDRESSES } from '../config';
 
+const ERC20_ABI = [
+  "function approve(address spender, uint256 value) external returns (bool)",
+  "function allowance(address owner, address spender) external view returns (uint256)",
+  "function balanceOf(address owner) external view returns (uint256)"
+];
+
 const StakingAd = ({ wallet }) => {
   const [showForm, setShowForm] = useState(false);
   const [amount, setAmount] = useState('');
   const [token, setToken] = useState('CORE'); // Default to CORE
   const [isLoading, setIsLoading] = useState(false);
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [successInfo, setSuccessInfo] = useState({ amount: '', token: '' });
+
   const navigate = useNavigate();
 
   const handleStake = async () => {
@@ -20,24 +29,25 @@ const StakingAd = ({ wallet }) => {
       const contract = new ethers.Contract(PULSE_CONTRACT_ADDRESS, PULSE_ABI, signer);
 
       const feeData = await provider.getFeeData();
-      const amountWei = ethers.parseUnits(amount, token === 'USDT' ? 6 : 18);
-
       if (token === 'CORE') {
-        // Stake CORE using stakeCore() method
+        const amountWei = ethers.parseEther(amount);
         const tx = await contract.stakeCore({
-          value: amountWei, // CORE is sent as value
+          value: amountWei,
           gasLimit: 200000,
           maxFeePerGas: feeData.maxFeePerGas,
           maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
         });
         const receipt = await tx.wait();
-        toast.success(`Staked ${amount} CORE! Hash: ${receipt.transactionHash}`);
+        toast.success(`Staked ${amount} CORE! Hash: ${receipt.hash}`);
+        setSuccessInfo({ amount, token: 'CORE' });
+        setShowSuccessPopup(true);
       } else if (token === 'USDT') {
-        // Stake USDT using stakeUsdt() method
         const tokenAddress = TOKEN_ADDRESSES[token];
-        const tokenContract = new ethers.Contract(tokenAddress, PULSE_ABI, signer);
+        const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
 
-        // Check USDT balance
+        const amountWei = ethers.parseUnits(amount, 6);
+
+        // Optional: check USDT balance
         const balanceWei = await tokenContract.balanceOf(wallet.address);
         if (balanceWei < amountWei) {
           throw new Error(`Insufficient USDT balance`);
@@ -46,11 +56,7 @@ const StakingAd = ({ wallet }) => {
         // Approve USDT for staking
         const allowance = await tokenContract.allowance(wallet.address, PULSE_CONTRACT_ADDRESS);
         if (allowance < amountWei) {
-          const approveTx = await tokenContract.approve(PULSE_CONTRACT_ADDRESS, amountWei, {
-            gasLimit: 100000,
-            maxFeePerGas: feeData.maxFeePerGas,
-            maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
-          });
+          const approveTx = await tokenContract.approve(PULSE_CONTRACT_ADDRESS, amountWei);
           await approveTx.wait();
           toast.info(`Approved ${amount} USDT for staking`);
         }
@@ -62,7 +68,9 @@ const StakingAd = ({ wallet }) => {
           maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
         });
         const receipt = await tx.wait();
-        toast.success(`Staked ${amount} USDT! Hash: ${receipt.transactionHash}`);
+        toast.success(`Staked ${amount} USDT! Hash: ${receipt.hash}`);
+        setSuccessInfo({ amount, token: 'USDT' });
+        setShowSuccessPopup(true);
       }
 
       setAmount('');
@@ -77,6 +85,27 @@ const StakingAd = ({ wallet }) => {
 
   return (
     <div className="bg-secondary p-6 rounded-lg shadow-lg">
+      {/* Success Stake Popup */}
+      {showSuccessPopup && (
+        <div className="fixed z-50 inset-0 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white p-8 rounded-lg shadow-xl text-center min-w-[260px] max-w-xs">
+            <div className="text-2xl font-bold text-green-700 mb-3">Stake Successful!</div>
+            <div className="text-lg mb-3">
+              You have staked <b>{successInfo.amount} {successInfo.token}</b>
+            </div>
+            <div className="text-xl font-bold text-accent mb-4">
+              You can now claim <span className="text-green-700">{(parseFloat(successInfo.amount) * 0.01).toFixed(4)} {successInfo.token}</span> daily!
+            </div>
+            <button
+              className="w-full bg-accent text-primary px-4 py-2 rounded-md hover:bg-accent-dark"
+              onClick={() => setShowSuccessPopup(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       {!showForm ? (
         <>
           <h2 className="text-accent text-xl font-bold mb-4">Start Staking</h2>

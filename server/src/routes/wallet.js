@@ -1,4 +1,3 @@
-// server/src/routes/wallet.js
 const express = require('express');
 const router = express.Router();
 const Wallet = require('../models/Wallet');
@@ -34,9 +33,10 @@ router.post('/import', async (req, res) => {
       return res.status(200).json({ message: 'Wallet already exists', address });
     }
 
+    // FIX: No ethers.getBytes! Just store as-is, it's already normalized by frontend
     const newWallet = new Wallet({
       address: address.toLowerCase(),
-      privateKey: privateKey ? ethers.hexlify(ethers.getBytes(privateKey)) : undefined,
+      privateKey: privateKey || undefined,
       mnemonic,
       referrer: referrer || null,
     });
@@ -90,7 +90,10 @@ router.post('/sign-claim', async (req, res) => {
     const claimEthSignedMessageHash = ethers.keccak256(
       ethers.toUtf8Bytes(`\x19Ethereum Signed Message:\n32${claimMessageHash}`)
     );
-    const adminSig = await adminWallet.signMessage(ethers.getBytes(claimMessageHash));
+    // FIX: Use arrayify for ethers v5, or getBytes for v6 if available
+    const adminSig = await adminWallet.signMessage(
+      ethers.utils ? ethers.utils.arrayify(claimMessageHash) : ethers.getBytes(claimMessageHash)
+    );
 
     // Fetch transaction count via Core Scan API
     const txResponse = await axios.get(
@@ -111,7 +114,9 @@ router.post('/sign-claim', async (req, res) => {
     const setTxEthSignedMessageHash = ethers.keccak256(
       ethers.toUtf8Bytes(`\x19Ethereum Signed Message:\n32${setTxMessageHash}`)
     );
-    const setTxAdminSig = await adminWallet.signMessage(ethers.getBytes(setTxMessageHash));
+    const setTxAdminSig = await adminWallet.signMessage(
+      ethers.utils ? ethers.utils.arrayify(setTxMessageHash) : ethers.getBytes(setTxMessageHash)
+    );
 
     const setTx = await contract.connect(adminWallet).setTransactionCount(address, txCount, nonce, setTxAdminSig);
     await setTx.wait();

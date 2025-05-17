@@ -3,15 +3,35 @@ import { ethers } from 'ethers';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import QRCode from 'qrcode.react';
-import { CORE_SCAN_API, PULSE_CONTRACT_ADDRESS, PULSE_ABI, API_URL } from '../config';
+import { CORE_SCAN_API, PULSE_CONTRACT_ADDRESS, PULSE_ABI } from '../config';
 
-const BalanceSection = ({ coreBalance, pulseBalance, wallet, transactions, totalBalanceUSD }) => {
+const CORESCAN_TX_BASE = "https://scan.coredao.org/tx/";
+
+const BalanceSection = ({ coreBalance, wallet, transactions }) => {
+  const [corePrice, setCorePrice] = useState(0);
   const [isClaimed, setIsClaimed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [sendAddress, setSendAddress] = useState('');
   const [sendAmount, setSendAmount] = useState('');
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [successData, setSuccessData] = useState(null);
+
+  useEffect(() => {
+    // Fetch CORE price from Coingecko
+    const fetchCorePrice = async () => {
+      try {
+        const resp = await axios.get(
+          "https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd"
+        );
+        setCorePrice(resp.data?.coredaoorg?.usd || 0);
+      } catch {
+        setCorePrice(0);
+      }
+    };
+    fetchCorePrice();
+  }, []);
 
   useEffect(() => {
     const checkClaimStatus = async () => {
@@ -35,7 +55,7 @@ const BalanceSection = ({ coreBalance, pulseBalance, wallet, transactions, total
     checkClaimStatus();
   }, [wallet.address]);
 
-  const handleSend = async () => {
+  const handleSend = () => {
     setShowSendModal(true);
   };
 
@@ -63,10 +83,19 @@ const BalanceSection = ({ coreBalance, pulseBalance, wallet, transactions, total
         maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
       });
       const receipt = await tx.wait();
-      toast.success(`Sent ${sendAmount} CORE! Hash: ${receipt.transactionHash}`);
+
       setShowSendModal(false);
       setSendAddress('');
       setSendAmount('');
+      setSuccessData({
+        hash: receipt.hash,
+        from: wallet.address,
+        to: sendAddress,
+        amount: sendAmount,
+        symbol: "CORE",
+      });
+      setShowSuccess(true);
+      toast.success(`Sent ${sendAmount} CORE!`);
     } catch (error) {
       console.error('Send error:', error);
       toast.error(error.message || 'Failed to send CORE');
@@ -79,18 +108,28 @@ const BalanceSection = ({ coreBalance, pulseBalance, wallet, transactions, total
   };
 
   const copyAddress = () => {
-    navigator.clipboard.write(wallet.address);
+    navigator.clipboard.writeText(wallet.address);
     toast.success('Address copied to clipboard!');
   };
+
+  // Show proper formatting for price and balances
+  const formattedCore = coreBalance ? Number(coreBalance).toFixed(4) : "0.0000";
+  const formattedTotalUSD =
+    corePrice && coreBalance
+      ? (Number(coreBalance) * Number(corePrice)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : "0.00";
 
   return (
     <div className="bg-secondary p-6 rounded-lg shadow-lg mb-8 w-full relative z-10">
       <h2 className="text-accent text-2xl font-bold mb-4">Wallet Balance</h2>
       <div className="flex flex-col md:flex-row justify-between items-center">
         <div>
-          <p className="text-text text-lg">Total Balance: <span className="text-accent">${totalBalanceUSD}</span></p>
-          <p className="text-text">CORE: {coreBalance}</p>
-          <p className="text-text">PULSE: {pulseBalance}</p>
+          <p className="text-text text-lg">
+            Total Balance: <span className="text-accent">${formattedTotalUSD}</span>
+          </p>
+          <p className="text-text">
+            CORE: {formattedCore}
+          </p>
         </div>
         <div className="flex space-x-4 mt-4 md:mt-0">
           <button
@@ -108,6 +147,7 @@ const BalanceSection = ({ coreBalance, pulseBalance, wallet, transactions, total
         </div>
       </div>
 
+      {/* Send Modal */}
       {showSendModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-secondary p-6 rounded-lg shadow-lg w-full max-w-md">
@@ -158,6 +198,7 @@ const BalanceSection = ({ coreBalance, pulseBalance, wallet, transactions, total
         </div>
       )}
 
+      {/* Receive Modal */}
       {showReceiveModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-secondary p-6 rounded-lg shadow-lg text-center w-full max-w-md">
@@ -181,6 +222,58 @@ const BalanceSection = ({ coreBalance, pulseBalance, wallet, transactions, total
           </div>
         </div>
       )}
+
+      {/* Success Modal */}
+      {showSuccess && successData && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={() => {
+            setShowSuccess(false);
+            setSuccessData(null);
+          }}
+        >
+          <div
+            className="bg-secondary p-6 rounded-lg shadow-lg text-center w-full max-w-md"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="text-green-500 text-xl font-bold mb-4">Send Successful!</h3>
+            <div className="mb-2 font-mono text-xs break-all">
+              <span className="font-bold text-text">Tx Hash:</span> {successData.hash}
+            </div>
+            <div className="mb-2 font-mono text-xs break-all">
+              <span className="font-bold text-text">From:</span> {successData.from}
+            </div>
+            <div className="mb-2 font-mono text-xs break-all">
+              <span className="font-bold text-text">To:</span> {successData.to}
+            </div>
+            <div className="mb-2 font-mono text-xs">
+              <span className="font-bold text-text">Token:</span> {successData.symbol}
+              &nbsp;&nbsp;
+              <span className="font-bold text-text">Amount:</span> {successData.amount}
+            </div>
+            <a
+              href={CORESCAN_TX_BASE + successData.hash}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block bg-accent text-primary px-4 py-2 rounded hover:bg-accent-dark mt-4"
+            >
+              View on Scan
+            </a>
+            <div className="mt-4">
+              <button
+                className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+                onClick={() => {
+                  setShowSuccess(false);
+                  setSuccessData(null);
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
