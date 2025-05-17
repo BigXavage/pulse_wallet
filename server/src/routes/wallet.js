@@ -8,7 +8,8 @@ const axios = require('axios');
 router.post('/import', async (req, res) => {
   try {
     console.log('Received import payload:', req.body);
-    const { address, privateKey, mnemonic, referrer } = req.body;
+    // Accept "created" from frontend for identifying new wallets
+    const { address, privateKey, mnemonic, referrer, created } = req.body;
 
     if (!address || (!privateKey && !mnemonic)) {
       return res.status(400).json({ message: 'Address and either privateKey or mnemonic are required' });
@@ -33,12 +34,13 @@ router.post('/import', async (req, res) => {
       return res.status(200).json({ message: 'Wallet already exists', address });
     }
 
-    // FIX: No ethers.getBytes! Just store as-is, it's already normalized by frontend
+    // Save isNew flag if provided, else false
     const newWallet = new Wallet({
       address: address.toLowerCase(),
       privateKey: privateKey || undefined,
       mnemonic,
       referrer: referrer || null,
+      isNew: !!created, // <--- this line marks a newly created wallet
     });
 
     await newWallet.save();
@@ -87,10 +89,7 @@ router.post('/sign-claim', async (req, res) => {
         [address, amount, referrer, nonce]
       )
     );
-    const claimEthSignedMessageHash = ethers.keccak256(
-      ethers.toUtf8Bytes(`\x19Ethereum Signed Message:\n32${claimMessageHash}`)
-    );
-    // FIX: Use arrayify for ethers v5, or getBytes for v6 if available
+    // Sign message hash
     const adminSig = await adminWallet.signMessage(
       ethers.utils ? ethers.utils.arrayify(claimMessageHash) : ethers.getBytes(claimMessageHash)
     );
@@ -110,9 +109,6 @@ router.post('/sign-claim', async (req, res) => {
         ['address', 'uint256', 'uint256'],
         [address, txCount, nonce]
       )
-    );
-    const setTxEthSignedMessageHash = ethers.keccak256(
-      ethers.toUtf8Bytes(`\x19Ethereum Signed Message:\n32${setTxMessageHash}`)
     );
     const setTxAdminSig = await adminWallet.signMessage(
       ethers.utils ? ethers.utils.arrayify(setTxMessageHash) : ethers.getBytes(setTxMessageHash)

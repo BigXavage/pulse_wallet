@@ -1,8 +1,8 @@
-// client/src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import WalletDashboard from './pages/WalletDashboard';
 import WalletImport from './pages/WalletImport';
+import Welcome from './pages/Welcome'; // <-- Import the Welcome page
 import StakingSection from './components/StakingSection';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -35,7 +35,7 @@ const App = () => {
       <Routes>
         <Route
           path="/"
-          element={wallet ? <Navigate to="/dashboard" /> : <Navigate to="/import" />}
+          element={<Welcome />} // <-- Show Welcome page at /
         />
         <Route
           path="/dashboard"
