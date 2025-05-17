@@ -2,7 +2,9 @@ const express = require('express');
 const axios = require('axios');
 const router = express.Router();
 
-const COREDDAO_API_KEY = '18ec2a66c64a4de889671dcb4bd6b9f7';
+// Load environment variables
+require('dotenv').config();
+const COREDDAO_API_KEY = process.env.COREDDAO_API_KEY;
 
 // Note: The double slashes '//' are intentionally kept as required by CoreDAO API
 
