@@ -67,6 +67,10 @@ const WalletDashboard = () => {
   const [referrerSaved, setReferrerSaved] = useState('');
   const [referralError, setReferralError] = useState('');
 
+  const [showAddWalletModal, setShowAddWalletModal] = useState(false);
+  const [showDeleteWalletModal, setShowDeleteWalletModal] = useState(false);
+  const [walletToDelete, setWalletToDelete] = useState(null);
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -336,8 +340,84 @@ const WalletDashboard = () => {
     }
   };
 
-  const handleAddWallet = async () => {};
-  const handleDeleteWallet = async (addressToDelete) => {};
+  // ADD WALLET: Show confirmation modal before navigating to import
+  const handleAddWallet = async () => {
+    setShowAddWalletModal(true);
+  };
+
+  // Confirm add wallet: go to import page
+  const confirmAddWallet = () => {
+    setShowAddWalletModal(false);
+    navigate('/import', { state: { fromDashboard: true } });
+  };
+
+  // Cancel add wallet modal
+  const cancelAddWallet = () => {
+    setShowAddWalletModal(false);
+  };
+
+  // Show confirmation modal before deleting wallet
+  const handleDeleteWallet = async (addressToDelete) => {
+    setWalletToDelete(addressToDelete);
+    setShowDeleteWalletModal(true);
+  };
+
+  // Confirm actual deletion
+  const confirmDeleteWallet = async () => {
+    const addressToDelete = walletToDelete;
+    setShowDeleteWalletModal(false);
+
+    const storedWallets = JSON.parse(localStorage.getItem('wallets') || '[]');
+    const updatedWallets = storedWallets.filter(
+      (w) => w.address.toLowerCase() !== addressToDelete.toLowerCase()
+    );
+    localStorage.setItem('wallets', JSON.stringify(updatedWallets));
+
+    // Remove selectedWallet if it's the one being deleted
+    let selectedAddress = localStorage.getItem('selectedWallet') || '';
+    if (selectedAddress.toLowerCase() === addressToDelete.toLowerCase()) {
+      if (updatedWallets.length > 0) {
+        localStorage.setItem('selectedWallet', updatedWallets[0].address);
+        setWallet({
+          address: updatedWallets[0].address,
+          privateKey: updatedWallets[0].privateKey,
+          mnemonic: updatedWallets[0].mnemonic,
+        });
+        fetchData(updatedWallets[0]);
+      } else {
+        localStorage.removeItem('selectedWallet');
+        setWallet(null);
+        setWallets([]);
+        navigate('/import', { replace: true });
+        return;
+      }
+    }
+    setWallets(updatedWallets);
+    setWalletToDelete(null);
+    toast.success('Wallet deleted from this device.');
+  };
+
+  // Cancel delete action
+  const cancelDeleteWallet = () => {
+    setShowDeleteWalletModal(false);
+    setWalletToDelete(null);
+  };
+
+  // If coming from import page, show a back-to-dashboard button
+  const showBackButton =
+    location.state && location.state.fromImport === true;
+
+  // When on import page, set fromDashboard state so Import page can use it for back navigation
+  useEffect(() => {
+    if (
+      location.pathname === '/import' &&
+      location.state &&
+      location.state.fromDashboard !== true
+    ) {
+      navigate('/import', { state: { fromDashboard: true } });
+    }
+    // eslint-disable-next-line
+  }, []);
 
   if (loading) {
     return (
@@ -352,6 +432,59 @@ const WalletDashboard = () => {
 
   return (
     <div className="min-h-screen bg-primary p-6 font-sans">
+      {/* Add Wallet Confirmation Modal */}
+      {showAddWalletModal && (
+        <div className="fixed z-50 inset-0 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white/90 p-8 rounded-2xl shadow-2xl text-center min-w-[260px] max-w-xs border border-accent">
+            <div className="text-2xl font-extrabold text-accent mb-3">Add New Wallet</div>
+            <div className="mb-4 text-gray-900">
+              Are you sure you want to add a new wallet? <br />You can always switch between wallets.
+            </div>
+            <div className="flex space-x-2">
+              <button
+                className={btnClass + " w-1/2"}
+                onClick={confirmAddWallet}
+              >
+                Yes, Add Wallet
+              </button>
+              <button
+                className="bg-gray-300 text-gray-900 px-4 py-2 rounded-lg w-1/2 font-bold"
+                onClick={cancelAddWallet}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Wallet Confirmation Modal */}
+      {showDeleteWalletModal && (
+        <div className="fixed z-50 inset-0 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white/90 p-8 rounded-2xl shadow-2xl text-center min-w-[260px] max-w-xs border border-red-400">
+            <div className="text-2xl font-extrabold text-red-600 mb-3">Delete Wallet</div>
+            <div className="mb-4 text-gray-900">
+              Are you sure you want to <span className="text-red-600 font-bold">permanently delete</span> this wallet from your device?
+              <br />This action cannot be undone on this device. Your wallet will remain safe on the blockchain and in any backup you have.
+            </div>
+            <div className="flex space-x-2">
+              <button
+                className="bg-red-600 text-white px-4 py-2 rounded-lg w-1/2 font-bold hover:bg-red-700"
+                onClick={confirmDeleteWallet}
+              >
+                Yes, Delete
+              </button>
+              <button
+                className="bg-gray-300 text-gray-900 px-4 py-2 rounded-lg w-1/2 font-bold"
+                onClick={cancelDeleteWallet}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showClaimSuccess && (
         <div className="fixed z-50 inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white/90 p-8 rounded-2xl shadow-2xl text-center min-w-[260px] max-w-xs border border-green-400">

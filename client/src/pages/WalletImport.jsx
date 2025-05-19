@@ -95,10 +95,22 @@ const WalletImport = () => {
     }
   };
 
+  // Show back button if navigated from dashboard
+  const showBackButton = location.state && location.state.fromDashboard;
+
   return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="bg-secondary p-8 rounded-lg shadow-lg w-full max-w-md">
         <h2 className="text-accent text-2xl font-bold mb-6 text-center">Import Wallet</h2>
+        {showBackButton && (
+          <button
+            type="button"
+            className="mb-4 px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 font-semibold"
+            onClick={() => navigate('/dashboard')}
+          >
+            ← Back to Dashboard
+          </button>
+        )}
         <form onSubmit={handleImport}>
           <div className="mb-4">
             <label className="block text-text mb-2">Import Type</label>
