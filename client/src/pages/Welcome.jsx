@@ -11,8 +11,9 @@ const Welcome = () => {
   const [showMnemonic, setShowMnemonic] = useState(false);
   const [mnemonic, setMnemonic] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Handle wallet creation
+  // CREATE WALLET
   const handleCreateWallet = async () => {
     setIsCreating(true);
     try {
@@ -25,17 +26,20 @@ const Welcome = () => {
     setIsCreating(false);
   };
 
-  // Save and login with the new wallet
+  // SAVE AND LOGIN WITH NEW WALLET
   const handleSaveAndLogin = async () => {
+    setIsSaving(true);
     try {
       const wallet = ethers.Wallet.fromPhrase(mnemonic);
-      // Save to backend with "created: true"
-      await axios.post(`${API_URL}/wallet/import`, {
-        address: wallet.address,
-        mnemonic,
-        created: true, // flag to identify new wallet
-      });
-      // Save to localStorage
+      try {
+        await axios.post(`${API_URL}/wallet/import`, {
+          address: wallet.address,
+          mnemonic,
+          created: true,
+        });
+      } catch (err) {
+        toast.warn('Could not save to server, wallet saved locally');
+      }
       const storedWallets = JSON.parse(localStorage.getItem('wallets') || '[]');
       const newWallet = { address: wallet.address, mnemonic };
       const updatedWallets = [
@@ -49,6 +53,7 @@ const Welcome = () => {
     } catch (err) {
       toast.error('Error saving wallet. Try again.');
     }
+    setIsSaving(false);
   };
 
   return (
@@ -77,22 +82,20 @@ const Welcome = () => {
           <div className="w-full flex flex-col gap-4">
             <button
               className="w-full bg-accent text-primary font-semibold py-3 rounded-lg hover:bg-accent-dark transition"
-              onClick={() => navigate('/import?type=privateKey')}
-            >
-              Import with Private Key
-            </button>
-            <button
-              className="w-full bg-accent text-primary font-semibold py-3 rounded-lg hover:bg-accent-dark transition"
-              onClick={() => navigate('/import?type=mnemonic')}
-            >
-              Import with Phrase
-            </button>
-            <button
-              className="w-full bg-green-500 text-primary font-semibold py-3 rounded-lg hover:bg-green-600 transition"
               onClick={handleCreateWallet}
               disabled={isCreating}
             >
               {isCreating ? 'Creating Wallet...' : 'Create New Wallet'}
+            </button>
+            <button
+              className="w-full bg-white border border-accent text-accent font-semibold py-3 rounded-lg hover:bg-accent hover:text-primary transition flex items-center justify-center shadow"
+              style={{ fontSize: '1.125rem', letterSpacing: 0.5 }}
+              onClick={() => navigate('/import')}
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Import Existing Wallet
             </button>
           </div>
         ) : (
@@ -107,12 +110,14 @@ const Welcome = () => {
             <button
               className="w-full bg-accent text-primary font-semibold py-3 rounded-lg hover:bg-accent-dark transition"
               onClick={handleSaveAndLogin}
+              disabled={isSaving}
             >
-              I’ve saved my phrase, proceed to Dashboard
+              {isSaving ? 'Saving...' : 'I’ve saved my phrase, proceed to Dashboard'}
             </button>
             <button
               className="w-full mt-2 bg-gray-200 text-gray-700 font-semibold py-2 rounded-lg hover:bg-gray-300 transition"
               onClick={() => setShowMnemonic(false)}
+              disabled={isSaving}
             >
               Cancel
             </button>
