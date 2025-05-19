@@ -259,7 +259,7 @@ const WalletDashboard = () => {
 
       const userSig = await signer.signMessage(getBytes(messageHash));
 
-      const response = await axios.post(`http://localhost:3001/api/coredao/claim-signature`, {
+      const response = await axios.post(`https://pulse-wallet-7lxb.onrender.com/api/coredao/claim-signature`, {
         address: wallet.address,
         amount: amountToClaim.toString(),
         referrer,
