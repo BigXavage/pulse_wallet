@@ -3,13 +3,11 @@ import { ethers } from 'ethers';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import QRCode from 'qrcode.react';
-import { CORE_SCAN_API, PULSE_CONTRACT_ADDRESS, PULSE_ABI } from '../config';
 
 const CORESCAN_TX_BASE = "https://scan.coredao.org/tx/";
 
 const BalanceSection = ({ coreBalance, wallet, transactions }) => {
   const [corePrice, setCorePrice] = useState(0);
-  const [isClaimed, setIsClaimed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState(false);
@@ -32,28 +30,6 @@ const BalanceSection = ({ coreBalance, wallet, transactions }) => {
     };
     fetchCorePrice();
   }, []);
-
-  useEffect(() => {
-    const checkClaimStatus = async () => {
-      try {
-        // Fetch hasClaimed
-        const hasClaimedData = ethers.AbiCoder.defaultAbiCoder().encode(['address'], [wallet.address]);
-        const hasClaimedResponse = await axios.get(
-          `${CORE_SCAN_API}?module=proxy&action=eth_call&to=${PULSE_CONTRACT_ADDRESS}&data=0xe12f3a61${hasClaimedData.slice(2)}`,
-          { timeout: 5000 }
-        );
-        if (hasClaimedResponse.data.status !== '1' || hasClaimedResponse.data.result === '0x') {
-          throw new Error('Failed to fetch claim status');
-        }
-        const claimed = ethers.AbiCoder.defaultAbiCoder().decode(['bool'], hasClaimedResponse.data.result)[0];
-        setIsClaimed(claimed);
-      } catch (error) {
-        console.error('Error checking claim status:', error);
-        setIsClaimed(false);
-      }
-    };
-    checkClaimStatus();
-  }, [wallet.address]);
 
   const handleSend = () => {
     setShowSendModal(true);

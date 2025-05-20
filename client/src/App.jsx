@@ -8,7 +8,7 @@ import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 // EntryPoint component to handle root redirect logic
-const EntryPoint = () => {
+const EntryPoint = ({ setWallet }) => {
   const [shouldRedirect, setShouldRedirect] = useState(false);
 
   useEffect(() => {
@@ -16,14 +16,15 @@ const EntryPoint = () => {
     const wallets = JSON.parse(localStorage.getItem('wallets') || '[]');
     const foundWallet = wallets.find((w) => w.address === selectedWallet);
     if (selectedWallet && foundWallet) {
+      setWallet(foundWallet); // <-- Ensure wallet state is up to date
       setShouldRedirect(true);
     }
-  }, []);
+  }, [setWallet]);
 
   if (shouldRedirect) {
     return <Navigate to="/dashboard" replace />;
   }
-  return <Welcome />;
+  return <Welcome setWallet={setWallet} />;
 };
 
 const App = () => {
@@ -54,7 +55,7 @@ const App = () => {
       <Routes>
         <Route
           path="/"
-          element={<EntryPoint />}
+          element={<EntryPoint setWallet={setWallet} />}
         />
         <Route
           path="/dashboard"

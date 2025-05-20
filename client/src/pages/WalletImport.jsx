@@ -23,11 +23,10 @@ const WalletImport = () => {
       let payload = {};
 
       if (importType === 'privateKey') {
-        // Changed: Normalize input by removing all whitespace and newlines
+        // Normalize input by removing all whitespace and newlines
         const inputKey = privateKey.trim().replace(/\s+/g, '');
         const sanitizedKey = inputKey.startsWith('0x') ? inputKey.slice(2) : inputKey;
         if (!/^[0-9a-fA-F]{64}$/.test(sanitizedKey)) {
-          // Changed: Improved error message for clarity
           throw new Error('Private key must be exactly 64 hexadecimal characters (excluding 0x)');
         }
         const formattedKey = '0x' + sanitizedKey;
@@ -35,12 +34,11 @@ const WalletImport = () => {
           wallet = new ethers.Wallet(formattedKey);
           payload = { address: wallet.address, privateKey: formattedKey };
         } catch (err) {
-          // Changed: Specific error for invalid key format
           throw new Error('Invalid private key: unable to create wallet');
         }
       } else {
         try {
-          // Changed: Normalize mnemonic by collapsing multiple spaces
+          // Normalize mnemonic by collapsing multiple spaces
           const sanitizedMnemonic = mnemonic.trim().replace(/\s+/g, ' ');
           wallet = ethers.Wallet.fromPhrase(sanitizedMnemonic);
           payload = { address: wallet.address, mnemonic: sanitizedMnemonic };
@@ -56,17 +54,13 @@ const WalletImport = () => {
         payload.referrer = referrer.toLowerCase();
       }
 
-      console.log('Sending import payload:', payload);
       let response;
       try {
-        // Changed: Increased timeout to 10s and added retry logic
         response = await axios.post(`${API_URL}/wallet/import`, payload, { timeout: 10000 });
         if (response.status !== 200) {
           throw new Error(response.data.message || 'Backend failed to store wallet');
         }
       } catch (backendError) {
-        console.warn('Backend import failed, storing locally:', backendError.message);
-        // Changed: Clearer toast message for backend failure
         toast.warn('Unable to connect to server, wallet stored locally');
       }
 
@@ -79,16 +73,13 @@ const WalletImport = () => {
       ];
       localStorage.setItem('wallets', JSON.stringify(updatedWallets));
       localStorage.setItem('selectedWallet', wallet.address);
-      console.log('Stored wallet:', newWallet);
 
       toast.success('Wallet imported successfully!');
-      console.log('Navigating to /dashboard');
       setTimeout(() => {
         navigate('/dashboard', { replace: true, state: { refreshBalances: true } });
         setIsSubmitting(false);
       }, 100);
     } catch (error) {
-      console.error('Import error:', error);
       const errorMessage = error.response?.data?.message || error.message || 'Failed to import wallet';
       toast.error(errorMessage);
       setIsSubmitting(false);
@@ -132,9 +123,7 @@ const WalletImport = () => {
                 className="w-full p-2.5 bg-text text-primary rounded-md"
                 value={privateKey}
                 onChange={(e) => setPrivateKey(e.target.value)}
-                // Changed: Trim input on blur to prevent whitespace issues
                 onBlur={() => setPrivateKey(privateKey.trim())}
-                // Changed: Clearer placeholder
                 placeholder="Enter private key (64 hex chars, with or without 0x)"
                 disabled={isSubmitting}
               />
@@ -146,7 +135,6 @@ const WalletImport = () => {
                 className="w-full p-2.5 bg-text text-primary rounded-md"
                 value={mnemonic}
                 onChange={(e) => setMnemonic(e.target.value)}
-                // Changed: Trim mnemonic on blur
                 onBlur={() => setMnemonic(mnemonic.trim())}
                 placeholder="Enter your 12 or 24-word phrase"
                 disabled={isSubmitting}

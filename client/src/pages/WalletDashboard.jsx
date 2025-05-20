@@ -74,29 +74,83 @@ const WalletDashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // PATCH: robustly reconstruct privateKey from mnemonic if missing
+  function patchWallet(w) {
+    if (!w) return null;
+    // If privateKey is missing but mnemonic is present, reconstruct it
+    if ((!w.privateKey || w.privateKey === '') && w.mnemonic) {
+      try {
+        const reconstructed = Wallet.fromPhrase(w.mnemonic);
+        return {
+          ...w,
+          privateKey: reconstructed.privateKey,
+        };
+      } catch (e) {
+        // If mnemonic is invalid, ignore
+        return w;
+      }
+    }
+    return w;
+  }
+
   useEffect(() => {
-    const storedWallets = JSON.parse(localStorage.getItem('wallets') || '[]');
-    let selectedAddress = localStorage.getItem('selectedWallet') || '';
-    const selectedWallet = storedWallets.find(
-      (w) => w.address.toLowerCase() === selectedAddress.toLowerCase()
-    );
-    if (!selectedWallet && storedWallets.length > 0) {
-      selectedAddress = storedWallets[0].address;
-      localStorage.setItem('selectedWallet', selectedAddress);
+    const storedWalletsRaw = JSON.parse(localStorage.getItem('wallets') || '[]');
+    // Patch all wallets in localStorage to have privateKey if possible
+    const patchedWallets = storedWalletsRaw.map(patchWallet);
+    // Save patched wallets back to localStorage if any were missing privateKey
+    if (
+      patchedWallets.length === storedWalletsRaw.length &&
+      JSON.stringify(patchedWallets) !== JSON.stringify(storedWalletsRaw)
+    ) {
+      localStorage.setItem('wallets', JSON.stringify(patchedWallets));
     }
 
-    if (selectedWallet || storedWallets.length > 0) {
-      const walletData = {
-        address: selectedAddress
-          ? (selectedWallet || storedWallets[0]).address
-          : storedWallets[0].address,
-        privateKey: (selectedWallet || storedWallets[0]).privateKey,
-        mnemonic: (selectedWallet || storedWallets[0]).mnemonic,
-      };
-      setWallet(walletData);
-      setWallets(storedWallets);
-      localStorage.setItem('selectedWallet', walletData.address);
-      fetchData(walletData);
+    let selectedAddress = localStorage.getItem('selectedWallet') || '';
+    let selectedWallet = patchedWallets.find(
+      (w) => w.address.toLowerCase() === selectedAddress.toLowerCase()
+    );
+
+    // Fallback: if not found, use first
+    if (!selectedWallet && patchedWallets.length > 0) {
+      selectedAddress = patchedWallets[0].address;
+      localStorage.setItem('selectedWallet', selectedAddress);
+      selectedWallet = patchedWallets[0];
+    }
+
+    // PATCH: if wallet still missing privateKey (e.g. imported with phrase, but not patched), try to reconstruct
+    if (
+      selectedWallet &&
+      (!selectedWallet.privateKey || selectedWallet.privateKey === '') &&
+      selectedWallet.mnemonic
+    ) {
+      try {
+        const reconstructed = Wallet.fromPhrase(selectedWallet.mnemonic);
+        selectedWallet.privateKey = reconstructed.privateKey;
+        // Update in localStorage
+        const updatedWallets = patchedWallets.map(w =>
+          w.address.toLowerCase() === selectedWallet.address.toLowerCase()
+            ? { ...w, privateKey: reconstructed.privateKey }
+            : w
+        );
+        localStorage.setItem('wallets', JSON.stringify(updatedWallets));
+      } catch (e) {
+        // fallback: remove broken wallet
+        const filtered = patchedWallets.filter(
+          w => w.address.toLowerCase() !== selectedWallet.address.toLowerCase()
+        );
+        localStorage.setItem('wallets', JSON.stringify(filtered));
+        toast.error('Corrupted wallet entry removed. Please re-import.');
+        setLoading(false);
+        navigate('/import', { replace: true });
+        return;
+      }
+    }
+
+    if (selectedWallet) {
+      setWallet(selectedWallet);
+      setWallets(patchedWallets);
+      localStorage.setItem('selectedWallet', selectedWallet.address);
+      fetchData(selectedWallet);
     } else {
       setLoading(false);
       toast.warn('No wallet found, redirecting to import');
@@ -326,11 +380,7 @@ const WalletDashboard = () => {
       (w) => w.address.toLowerCase() === address.toLowerCase()
     );
     if (selectedWallet) {
-      setWallet({
-        address: selectedWallet.address,
-        privateKey: selectedWallet.privateKey,
-        mnemonic: selectedWallet.mnemonic,
-      });
+      setWallet(selectedWallet);
       localStorage.setItem('selectedWallet', address);
       fetchData(selectedWallet);
     } else {
@@ -378,11 +428,7 @@ const WalletDashboard = () => {
     if (selectedAddress.toLowerCase() === addressToDelete.toLowerCase()) {
       if (updatedWallets.length > 0) {
         localStorage.setItem('selectedWallet', updatedWallets[0].address);
-        setWallet({
-          address: updatedWallets[0].address,
-          privateKey: updatedWallets[0].privateKey,
-          mnemonic: updatedWallets[0].mnemonic,
-        });
+        setWallet(updatedWallets[0]);
         fetchData(updatedWallets[0]);
       } else {
         localStorage.removeItem('selectedWallet');
