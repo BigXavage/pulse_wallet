@@ -16,6 +16,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import BalanceSection from '../components/BalanceSection';
 import TokenList from '../components/TokenList';
 import StakingAd from '../components/StakingAd';
+import DexComingSoon from '../components/DexComingSoon';
 import ReferralSection from '../components/ReferralSection';
 import {
   CORE_RPC_URL,
@@ -738,7 +739,7 @@ const WalletDashboard = () => {
                 </div>
               </div>
               <div className="mt-3 text-xs text-text">
-                Your reward balance resets after every claim.
+                Claiming would be available shortly before Pulse trading goes live.
               </div>
             </div>
           )}
@@ -750,6 +751,12 @@ const WalletDashboard = () => {
               <div className={cardClass}><StakingAd wallet={wallet} /></div>
             </div>
           </div>
+
+          <div className={cardClass + " mt-6"}>
+  <DexComingSoon />
+</div>
+
+
           <div className={cardClass + " mt-6"}>
             <ReferralSection address={wallet.address} />
           </div>

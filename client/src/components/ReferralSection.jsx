@@ -4,7 +4,7 @@ import { toast } from 'react-toastify';
 import { CORE_RPC_URL, PULSE_CONTRACT_ADDRESS, PULSE_ABI } from '../config';
 
 const ReferralSection = ({ address }) => {
-  const referralLink = `${window.location.origin}/?ref=${address}`;
+ const referralLink = `https://pulsezone.io/?ref=${address}`;
   const [referralEarnings, setReferralEarnings] = useState('0.0000');
   const [numReferrals, setNumReferrals] = useState(0);
   const [referredUsers, setReferredUsers] = useState([]);
