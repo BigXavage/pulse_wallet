@@ -5,7 +5,6 @@ import {
   Contract,
   getBytes,
   keccak256,
-  parseEther,
   formatEther,
   formatUnits,
   solidityPacked,
@@ -301,35 +300,27 @@ const WalletDashboard = () => {
       const signer = new Wallet(wallet.privateKey, provider);
       const contract = new Contract(PULSE_CONTRACT_ADDRESS, PULSE_ABI, signer);
 
-      const amountToClaim = parseEther(claimableAmount);
+      // Always get referrer from local state or fallback
       const referrer = referrerSaved || '0x0000000000000000000000000000000000000000';
-      const nonce = Date.now() + Math.floor(Math.random() * 10000);
 
+      // 1. Get claim signature & data from backend
+      const response = await axios.post('https://pulse-wallet-7lxb.onrender.com/api/wallet/sign-claim', {
+        address: wallet.address
+      });
+      const { amount, nonce, adminSig } = response.data;
+
+      // 2. Create message hash and user signature
       const packed = solidityPacked(
         ['address', 'uint256', 'address', 'uint256'],
-        [wallet.address, amountToClaim, referrer, nonce]
+        [wallet.address, amount, referrer, nonce]
       );
       const messageHash = keccak256(packed);
-
       const userSig = await signer.signMessage(getBytes(messageHash));
 
-      const response = await axios.post(`https://pulse-wallet-7lxb.onrender.com/api/coredao/claim-signature`, {
-        address: wallet.address,
-        amount: amountToClaim.toString(),
-        referrer,
-        nonce,
-      });
-      const adminSig = response.data.signature;
-
-      if (!adminSig) {
-        toast.error('Failed to obtain admin signature');
-        setIsClaiming(false);
-        return;
-      }
-
+      // 3. Claim on contract
       const tx = await contract.claimTokens(
         wallet.address,
-        amountToClaim,
+        amount,
         referrer,
         nonce,
         adminSig,
@@ -346,7 +337,7 @@ const WalletDashboard = () => {
       setHasClaimedInitial(true);
       fetchData(wallet);
     } catch (error) {
-      toast.error(error.reason || error.message || 'Failed to claim tokens');
+      toast.error(error?.response?.data?.message || error.reason || error.message || 'Failed to claim tokens');
     }
     setIsClaiming(false);
   };
