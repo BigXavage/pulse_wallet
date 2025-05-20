@@ -8,6 +8,7 @@ import {
   formatEther,
   formatUnits,
   solidityPacked,
+  parseEther,
 } from 'ethers';
 import axios from 'axios';
 import { toast } from 'react-toastify';
@@ -24,11 +25,9 @@ import {
   PULSE_ABI,
 } from '../config';
 
-// The block for May 15, 2025 23:59:59 UTC, as discovered by you.
 const CLAIM_END_BLOCK = 24683011;
 const CLAIM_THRESHOLD = 10;
 
-// UI classes based on original PulseWallet palette
 const cardClass =
   'bg-primary/95 rounded-xl shadow-xl p-6 mb-6 border border-accent';
 const btnClass =
@@ -73,10 +72,8 @@ const WalletDashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // PATCH: robustly reconstruct privateKey from mnemonic if missing
   function patchWallet(w) {
     if (!w) return null;
-    // If privateKey is missing but mnemonic is present, reconstruct it
     if ((!w.privateKey || w.privateKey === '') && w.mnemonic) {
       try {
         const reconstructed = Wallet.fromPhrase(w.mnemonic);
@@ -85,7 +82,6 @@ const WalletDashboard = () => {
           privateKey: reconstructed.privateKey,
         };
       } catch (e) {
-        // If mnemonic is invalid, ignore
         return w;
       }
     }
@@ -94,9 +90,7 @@ const WalletDashboard = () => {
 
   useEffect(() => {
     const storedWalletsRaw = JSON.parse(localStorage.getItem('wallets') || '[]');
-    // Patch all wallets in localStorage to have privateKey if possible
     const patchedWallets = storedWalletsRaw.map(patchWallet);
-    // Save patched wallets back to localStorage if any were missing privateKey
     if (
       patchedWallets.length === storedWalletsRaw.length &&
       JSON.stringify(patchedWallets) !== JSON.stringify(storedWalletsRaw)
@@ -109,14 +103,12 @@ const WalletDashboard = () => {
       (w) => w.address.toLowerCase() === selectedAddress.toLowerCase()
     );
 
-    // Fallback: if not found, use first
     if (!selectedWallet && patchedWallets.length > 0) {
       selectedAddress = patchedWallets[0].address;
       localStorage.setItem('selectedWallet', selectedAddress);
       selectedWallet = patchedWallets[0];
     }
 
-    // PATCH: if wallet still missing privateKey (e.g. imported with phrase, but not patched), try to reconstruct
     if (
       selectedWallet &&
       (!selectedWallet.privateKey || selectedWallet.privateKey === '') &&
@@ -125,7 +117,6 @@ const WalletDashboard = () => {
       try {
         const reconstructed = Wallet.fromPhrase(selectedWallet.mnemonic);
         selectedWallet.privateKey = reconstructed.privateKey;
-        // Update in localStorage
         const updatedWallets = patchedWallets.map(w =>
           w.address.toLowerCase() === selectedWallet.address.toLowerCase()
             ? { ...w, privateKey: reconstructed.privateKey }
@@ -133,7 +124,6 @@ const WalletDashboard = () => {
         );
         localStorage.setItem('wallets', JSON.stringify(updatedWallets));
       } catch (e) {
-        // fallback: remove broken wallet
         const filtered = patchedWallets.filter(
           w => w.address.toLowerCase() !== selectedWallet.address.toLowerCase()
         );
@@ -163,11 +153,9 @@ const WalletDashboard = () => {
     try {
       const provider = new JsonRpcProvider(CORE_RPC_URL);
 
-      // CORE balance
       const coreBalanceWei = await provider.getBalance(selectedWallet.address);
       setCoreBalance(parseFloat(formatEther(coreBalanceWei)).toFixed(4));
 
-      // PULSE balance (ERC-20)
       let pulseBalanceEth = '0';
       try {
         const pulseContract = new Contract(
@@ -188,7 +176,6 @@ const WalletDashboard = () => {
         setPulseBalance('0.0000');
       }
 
-      // ERC-20 token balances
       const tokenBalances = await Promise.all(
         Object.entries(TOKEN_ADDRESSES)
           .filter(([name]) => name !== 'CORE' && name !== 'PULSE')
@@ -218,7 +205,6 @@ const WalletDashboard = () => {
           })
       );
 
-      // Price fetch (CoinGecko)
       let corePrice = 0.8;
       let wcorePrice = 0.8;
       let usdtPrice = 1.0;
@@ -232,7 +218,6 @@ const WalletDashboard = () => {
         usdtPrice = prices.tether?.usd || usdtPrice;
       } catch (error) {}
 
-      // USD balance
       const coreUSD = parseFloat(coreBalanceWei ? formatEther(coreBalanceWei) : '0') * corePrice;
       const pulseUSD = parseFloat(pulseBalanceEth) * corePrice;
       const tokenUSD = tokenBalances.reduce((sum, token) => {
@@ -247,22 +232,19 @@ const WalletDashboard = () => {
       setTotalBalanceUSD((coreUSD + pulseUSD + tokenUSD).toFixed(2));
       setTokens(tokenBalances);
 
-      // --- On-chain claim status ---
       const pulseContract = new Contract(PULSE_CONTRACT_ADDRESS, PULSE_ABI, provider);
       const claimed = await pulseContract.hasClaimed(selectedWallet.address);
       setHasClaimedInitial(claimed);
 
-      // --- Transaction count and claimable amount logic ---
       try {
         const txCount = await provider.getTransactionCount(selectedWallet.address, 'latest');
         setTransactions(txCount);
-        setClaimableAmount((txCount * 1).toFixed(2)); // 1 PULSE per transaction
+        setClaimableAmount((txCount * 1).toFixed(2));
       } catch (chainError) {
         console.error('Failed to fetch transaction count from blockchain:', chainError);
         toast.error('Unable to fetch transaction count');
       }
 
-      // PulseWallet app tx count (after initial claim)
       let joinTxKey = `pulse_join_tx_${selectedWallet.address}`;
       let appTxStart = parseInt(localStorage.getItem(joinTxKey) || '0', 10);
       if (appTxStart === 0 && claimed) {
@@ -285,6 +267,7 @@ const WalletDashboard = () => {
     setLoading(false);
   };
 
+  // FIXED: Always send all fields to backend and log for debugging
   const handleClaim = async () => {
     if (parseFloat(claimableAmount) === 0) {
       toast.warn('No claimable amount available');
@@ -300,27 +283,48 @@ const WalletDashboard = () => {
       const signer = new Wallet(wallet.privateKey, provider);
       const contract = new Contract(PULSE_CONTRACT_ADDRESS, PULSE_ABI, signer);
 
-      // Always get referrer from local state or fallback
       const referrer = referrerSaved || '0x0000000000000000000000000000000000000000';
+      const amountToClaim = parseEther(claimableAmount);
+      const nonce = Date.now() + Math.floor(Math.random() * 10000);
 
-      // 1. Get claim signature & data from backend
-      const response = await axios.post('https://pulse-wallet-7lxb.onrender.com/api/wallet/sign-claim', {
-        address: wallet.address
+      // Debug log for outgoing payload
+      console.log('Claim POST payload:', {
+        address: wallet.address,
+        amount: amountToClaim.toString(),
+        referrer,
+        nonce
       });
-      const { amount, nonce, adminSig } = response.data;
 
-      // 2. Create message hash and user signature
+      const response = await axios.post(
+        'https://pulse-wallet-7lxb.onrender.com/api/wallet/sign-claim',
+        {
+          address: wallet.address,
+          amount: amountToClaim.toString(),
+          referrer,
+          nonce
+        }
+      );
+
+      // Debug log for backend response
+      console.log('Backend response:', response.data);
+
+      const adminSig = response.data.signature;
+      if (!adminSig) {
+        toast.error('Failed to obtain admin signature');
+        setIsClaiming(false);
+        return;
+      }
+
       const packed = solidityPacked(
         ['address', 'uint256', 'address', 'uint256'],
-        [wallet.address, amount, referrer, nonce]
+        [wallet.address, amountToClaim, referrer, nonce]
       );
       const messageHash = keccak256(packed);
       const userSig = await signer.signMessage(getBytes(messageHash));
 
-      // 3. Claim on contract
       const tx = await contract.claimTokens(
         wallet.address,
-        amount,
+        amountToClaim,
         referrer,
         nonce,
         adminSig,
@@ -337,7 +341,13 @@ const WalletDashboard = () => {
       setHasClaimedInitial(true);
       fetchData(wallet);
     } catch (error) {
-      toast.error(error?.response?.data?.message || error.reason || error.message || 'Failed to claim tokens');
+      if (error.response) {
+        console.error('Backend response error:', error.response.data);
+        toast.error(error.response.data.error || error.response.data.message || 'Failed to claim tokens');
+      } else {
+        console.error('Claim error:', error);
+        toast.error(error.reason || error.message || 'Failed to claim tokens');
+      }
     }
     setIsClaiming(false);
   };
@@ -381,29 +391,24 @@ const WalletDashboard = () => {
     }
   };
 
-  // ADD WALLET: Show confirmation modal before navigating to import
   const handleAddWallet = async () => {
     setShowAddWalletModal(true);
   };
 
-  // Confirm add wallet: go to import page
   const confirmAddWallet = () => {
     setShowAddWalletModal(false);
     navigate('/import', { state: { fromDashboard: true } });
   };
 
-  // Cancel add wallet modal
   const cancelAddWallet = () => {
     setShowAddWalletModal(false);
   };
 
-  // Show confirmation modal before deleting wallet
   const handleDeleteWallet = async (addressToDelete) => {
     setWalletToDelete(addressToDelete);
     setShowDeleteWalletModal(true);
   };
 
-  // Confirm actual deletion
   const confirmDeleteWallet = async () => {
     const addressToDelete = walletToDelete;
     setShowDeleteWalletModal(false);
@@ -414,7 +419,6 @@ const WalletDashboard = () => {
     );
     localStorage.setItem('wallets', JSON.stringify(updatedWallets));
 
-    // Remove selectedWallet if it's the one being deleted
     let selectedAddress = localStorage.getItem('selectedWallet') || '';
     if (selectedAddress.toLowerCase() === addressToDelete.toLowerCase()) {
       if (updatedWallets.length > 0) {
@@ -434,17 +438,14 @@ const WalletDashboard = () => {
     toast.success('Wallet deleted from this device.');
   };
 
-  // Cancel delete action
   const cancelDeleteWallet = () => {
     setShowDeleteWalletModal(false);
     setWalletToDelete(null);
   };
 
-  // If coming from import page, show a back-to-dashboard button
   const showBackButton =
     location.state && location.state.fromImport === true;
 
-  // When on import page, set fromDashboard state so Import page can use it for back navigation
   useEffect(() => {
     if (
       location.pathname === '/import' &&
