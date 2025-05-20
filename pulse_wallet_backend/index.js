@@ -15,14 +15,15 @@ if (!ADMIN_PRIVATE_KEY) {
 
 const adminWallet = new ethers.Wallet(ADMIN_PRIVATE_KEY);
 
-app.post('/api/coredao/claim-signature', async (req, res) => {
+// Route for the claim signature (used by dashboard frontend)
+app.post('/api/wallet/sign-claim', async (req, res) => {
   try {
     const { address, amount, referrer, nonce } = req.body;
     if (!address || !amount || !referrer || !nonce) {
       return res.status(400).json({ error: 'Missing fields' });
     }
 
-    // Always recompute the hash to prevent any mismatch
+    // Recompute the packed hash exactly as it will be used on-chain
     const packed = ethers.solidityPacked(
       ['address', 'uint256', 'address', 'uint256'],
       [address, amount, referrer, nonce]
@@ -32,6 +33,7 @@ app.post('/api/coredao/claim-signature', async (req, res) => {
     // Sign as Ethereum Signed Message (EIP-191)
     const signature = await adminWallet.signMessage(ethers.getBytes(messageHash));
 
+    // Respond in the same format as your original system
     res.json({ signature });
   } catch (err) {
     console.error('Signature error:', err);
@@ -39,8 +41,8 @@ app.post('/api/coredao/claim-signature', async (req, res) => {
   }
 });
 
-// For compatibility with your new frontend route, also mirror this route:
-app.post('/api/wallet/sign-claim', async (req, res) => {
+// (OPTIONAL) Keep this route for backward compatibility if your frontend ever uses it
+app.post('/api/coredao/claim-signature', async (req, res) => {
   try {
     const { address, amount, referrer, nonce } = req.body;
     if (!address || !amount || !referrer || !nonce) {
@@ -52,8 +54,8 @@ app.post('/api/wallet/sign-claim', async (req, res) => {
       [address, amount, referrer, nonce]
     );
     const messageHash = ethers.keccak256(packed);
-
     const signature = await adminWallet.signMessage(ethers.getBytes(messageHash));
+
     res.json({ signature });
   } catch (err) {
     console.error('Signature error:', err);
