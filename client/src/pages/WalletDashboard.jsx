@@ -60,7 +60,9 @@ const WalletDashboard = () => {
   const [appTxCount, setAppTxCount] = useState(0);
   const [pulseAppEarnings, setPulseAppEarnings] = useState(0);
 
+  // Referral logic state
   const [showReferralModal, setShowReferralModal] = useState(false);
+  const [referralStep, setReferralStep] = useState(0); // 0 = closed, 1 = choose, 2 = input
   const [referrerInput, setReferrerInput] = useState('');
   const [referrerSaved, setReferrerSaved] = useState('');
   const [referralError, setReferralError] = useState('');
@@ -267,14 +269,54 @@ const WalletDashboard = () => {
     setLoading(false);
   };
 
-  // FIXED: Always send all fields to backend and log for debugging
-  const handleClaim = async () => {
-    if (parseFloat(claimableAmount) === 0) {
-      toast.warn('No claimable amount available');
+  // --- Referral Modal logic ---
+  const openReferralStep = () => {
+    setReferralStep(1); // Step 1: choose
+    setShowReferralModal(true);
+    setReferralError('');
+    setReferrerInput('');
+  };
+
+  const handleReferralNone = () => {
+    setReferrerSaved('0x0000000000000000000000000000000000000000');
+    setShowReferralModal(false);
+    setReferralStep(0);
+    setReferralError('');
+    setReferrerInput('');
+    handleClaim('0x0000000000000000000000000000000000000000');
+  };
+
+  const handleReferralYes = () => {
+    setReferralStep(2); // Step 2: input
+    setReferralError('');
+    setReferrerInput('');
+  };
+
+  const handleReferralSubmit = () => {
+    const addr = referrerInput.trim();
+    if (!addr) {
+      setReferralError('Referral address required or choose No Referral.');
       return;
     }
-    if (!referrerSaved && !showReferralModal) {
-      setShowReferralModal(true);
+    if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+      setReferralError('Wrong or invalid address.');
+      return;
+    }
+    if (wallet && addr.toLowerCase() === wallet.address.toLowerCase()) {
+      setReferralError('You cannot refer yourself.');
+      return;
+    }
+    setReferralError('');
+    setReferrerSaved(addr);
+    setShowReferralModal(false);
+    setReferralStep(0);
+    handleClaim(addr);
+  };
+
+  // handleClaim now takes an optional referrer param
+  const handleClaim = async (_referrer) => {
+    if (parseFloat(claimableAmount) === 0) {
+      toast.warn('No claimable amount available');
       return;
     }
     setIsClaiming(true);
@@ -283,7 +325,11 @@ const WalletDashboard = () => {
       const signer = new Wallet(wallet.privateKey, provider);
       const contract = new Contract(PULSE_CONTRACT_ADDRESS, PULSE_ABI, signer);
 
-      const referrer = referrerSaved || '0x0000000000000000000000000000000000000000';
+      const referrer =
+        typeof _referrer === 'string'
+          ? _referrer
+          : referrerSaved || '0x0000000000000000000000000000000000000000';
+
       const amountToClaim = parseEther(claimableAmount);
       const nonce = Date.now() + Math.floor(Math.random() * 10000);
 
@@ -292,7 +338,7 @@ const WalletDashboard = () => {
         address: wallet.address,
         amount: amountToClaim.toString(),
         referrer,
-        nonce
+        nonce,
       });
 
       const response = await axios.post(
@@ -301,7 +347,7 @@ const WalletDashboard = () => {
           address: wallet.address,
           amount: amountToClaim.toString(),
           referrer,
-          nonce
+          nonce,
         }
       );
 
@@ -336,45 +382,33 @@ const WalletDashboard = () => {
       setShowClaimSuccess(true);
       toast.success('Tokens claimed successfully!');
       setClaimableAmount('0');
-      const currentTxCount = await provider.getTransactionCount(wallet.address, 'latest');
-      localStorage.setItem(`pulse_join_tx_${wallet.address}`, currentTxCount);
+      const currentTxCount = await provider.getTransactionCount(
+        wallet.address,
+        'latest'
+      );
+      localStorage.setItem(
+        `pulse_join_tx_${wallet.address}`,
+        currentTxCount
+      );
       setHasClaimedInitial(true);
       fetchData(wallet);
     } catch (error) {
       if (error.response) {
         console.error('Backend response error:', error.response.data);
-        toast.error(error.response.data.error || error.response.data.message || 'Failed to claim tokens');
+        toast.error(
+          error.response.data.error ||
+            error.response.data.message ||
+            'Failed to claim tokens'
+        );
       } else {
         console.error('Claim error:', error);
-        toast.error(error.reason || error.message || 'Failed to claim tokens');
+        toast.error(
+          error.reason || error.message || 'Failed to claim tokens'
+        );
       }
     }
     setIsClaiming(false);
   };
-
-  const handleReferralSubmit = () => {
-    setReferralError('');
-    if (!referrerInput) {
-      setReferrerSaved('0x0000000000000000000000000000000000000000');
-      setShowReferralModal(false);
-      handleClaim();
-      return;
-    }
-    if (!/^0x[a-fA-F0-9]{40}$/.test(referrerInput)) {
-      setReferralError('Invalid wallet address.');
-      return;
-    }
-    if (referrerInput.toLowerCase() === wallet.address.toLowerCase()) {
-      setReferralError('You cannot refer yourself.');
-      return;
-    }
-    setReferrerSaved(referrerInput);
-    setShowReferralModal(false);
-    handleClaim();
-  };
-
-  const showInitialClaimSection = !hasClaimedInitial;
-  const showAppRewardsSection = hasClaimedInitial;
 
   const selectWallet = (address) => {
     const selectedWallet = wallets.find(
@@ -391,24 +425,29 @@ const WalletDashboard = () => {
     }
   };
 
+  // ADD WALLET: Show confirmation modal before navigating to import
   const handleAddWallet = async () => {
     setShowAddWalletModal(true);
   };
 
+  // Confirm add wallet: go to import page
   const confirmAddWallet = () => {
     setShowAddWalletModal(false);
     navigate('/import', { state: { fromDashboard: true } });
   };
 
+  // Cancel add wallet modal
   const cancelAddWallet = () => {
     setShowAddWalletModal(false);
   };
 
+  // Show confirmation modal before deleting wallet
   const handleDeleteWallet = async (addressToDelete) => {
     setWalletToDelete(addressToDelete);
     setShowDeleteWalletModal(true);
   };
 
+  // Confirm actual deletion
   const confirmDeleteWallet = async () => {
     const addressToDelete = walletToDelete;
     setShowDeleteWalletModal(false);
@@ -438,14 +477,17 @@ const WalletDashboard = () => {
     toast.success('Wallet deleted from this device.');
   };
 
+  // Cancel delete action
   const cancelDeleteWallet = () => {
     setShowDeleteWalletModal(false);
     setWalletToDelete(null);
   };
 
+  // If coming from import page, show a back-to-dashboard button
   const showBackButton =
     location.state && location.state.fromImport === true;
 
+  // When on import page, set fromDashboard state so Import page can use it for back navigation
   useEffect(() => {
     if (
       location.pathname === '/import' &&
@@ -546,41 +588,72 @@ const WalletDashboard = () => {
         </div>
       )}
 
+      {/* Referral Modal */}
       {showReferralModal && (
         <div className="fixed z-50 inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white/90 p-6 rounded-xl shadow-2xl text-center min-w-[320px] max-w-xs border border-accent">
-            <h3 className="text-3xl font-extrabold text-accent mb-4 text-shadow-md">
-              Enter Referral Address
-            </h3>
-            <p className="mb-3 text-gray-900 text-base font-semibold text-shadow-sm">
-              Enter a referrer wallet address (optional), or leave blank for no referral.
-            </p>
-            <input
-              className="w-full p-2 mb-3 border rounded focus:outline-none focus:ring-2 focus:ring-accent font-medium text-gray-900"
-              placeholder="0x..."
-              value={referrerInput}
-              onChange={e => setReferrerInput(e.target.value)}
-            />
-            {referralError && (
-              <div className="text-red-700 font-bold mb-3 text-shadow-sm">{referralError}</div>
+            {referralStep === 1 && (
+              <>
+                <h3 className="text-3xl font-extrabold text-accent mb-4 text-shadow-md">
+                  Claim Referral
+                </h3>
+                <p className="mb-5 text-gray-900 text-base font-semibold text-shadow-sm">
+                  Do you have a referral address? If yes, you'll get 10% bonus, and so will your referrer!
+                </p>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleReferralYes}
+                    className={btnClass + " w-1/2"}
+                  >
+                    I have a referral
+                  </button>
+                  <button
+                    onClick={handleReferralNone}
+                    className="bg-gray-300 text-gray-900 px-4 py-2 rounded-lg w-1/2 font-bold"
+                  >
+                    No referral
+                  </button>
+                </div>
+              </>
             )}
-            <div className="flex space-x-2">
-              <button
-                onClick={handleReferralSubmit}
-                className={btnClass + " w-1/2"}
-              >
-                Submit
-              </button>
-              <button
-                onClick={() => {
-                  setShowReferralModal(false);
-                  setReferralError('');
-                }}
-                className="bg-gray-300 text-gray-900 px-4 py-2 rounded-lg w-1/2 font-bold"
-              >
-                Cancel
-              </button>
-            </div>
+            {referralStep === 2 && (
+              <>
+                <h3 className="text-3xl font-extrabold text-accent mb-3 text-shadow-md">
+                  Enter Referral Address
+                </h3>
+                <p className="mb-3 text-gray-900 text-base font-semibold text-shadow-sm">
+                  Enter a referral wallet address to gain a 10% bonus!
+                </p>
+                <input
+                  className="w-full p-2 mb-3 border rounded focus:outline-none focus:ring-2 focus:ring-accent font-medium text-gray-900"
+                  placeholder="0x..."
+                  value={referrerInput}
+                  onChange={e => setReferrerInput(e.target.value)}
+                />
+                {referralError && (
+                  <div className="text-red-700 font-bold mb-3 text-shadow-sm">{referralError}</div>
+                )}
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleReferralSubmit}
+                    className={btnClass + " w-1/2"}
+                  >
+                    Submit
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowReferralModal(false);
+                      setReferralError('');
+                      setReferralStep(0);
+                      setReferrerInput('');
+                    }}
+                    className="bg-gray-300 text-gray-900 px-4 py-2 rounded-lg w-1/2 font-bold"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -630,7 +703,7 @@ const WalletDashboard = () => {
               totalBalanceUSD={totalBalanceUSD}
             />
           </div>
-          {showInitialClaimSection && (
+          {(!hasClaimedInitial) && (
             <div className={cardClass}>
               <div className={sectionTitleClass}><span>🎁</span> Initial Claimable Amount</div>
               <label className={labelClass}>Eligible Transactions:</label>
@@ -640,7 +713,7 @@ const WalletDashboard = () => {
                 <p className="text-red-500 text-sm mt-2 mb-2">No claimable tokens available. Make transactions to earn claimable tokens.</p>
               )}
               <button
-                onClick={handleClaim}
+                onClick={openReferralStep}
                 className={btnClass + " mt-4 w-full"}
                 disabled={isClaiming || parseFloat(claimableAmount) === 0}
               >
@@ -651,7 +724,7 @@ const WalletDashboard = () => {
               </div>
             </div>
           )}
-          {showAppRewardsSection && (
+          {(hasClaimedInitial) && (
             <div className={cardClass}>
               <div className={sectionTitleClass}><span>🔥</span> PulseWallet Rewards</div>
               <div className="mb-2 text-text text-base">
